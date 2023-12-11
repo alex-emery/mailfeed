@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"os/signal"
 
 	"os"
 
+	"github.com/alex-emery/mailfeed/mail"
+	"github.com/alex-emery/mailfeed/newsletter"
+	"github.com/alex-emery/mailfeed/rss"
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )
@@ -29,8 +31,8 @@ func main() {
 		log.Fatal("failed to create logger", err)
 	}
 
-	feedChan := make(chan *NewsLetter)
-	m, err := NewMail(logger, emailServer, emailUsername, emailPassword, emailID, feedChan)
+	feedChan := make(chan *newsletter.NewsLetter)
+	m, err := mail.New(logger, emailServer, emailUsername, emailPassword, emailID, feedChan)
 	if err != nil {
 		log.Fatal("failed to create mail fetcher", err)
 	}
@@ -39,32 +41,7 @@ func main() {
 
 	go m.StartFetch()
 
-	feed := NewFeed("Good Title")
-	go func() {
-		for {
-			appendToFood(feed, <-feedChan)
-		}
-	}()
-
-	http.HandleFunc("/rss", func(w http.ResponseWriter, r *http.Request) {
-		content, err := feed.ToRss()
-		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
-		w.Header().Set("Content-Type", "application/rss+xml")
-		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		w.Write([]byte(content))
-	})
-
-	port := 8080
-	fmt.Printf("Server listening on :%d\n", port)
-	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: nil,
-	}
+	server := rss.New(logger, feedChan)
 
 	go func() {
 		err := server.ListenAndServe()

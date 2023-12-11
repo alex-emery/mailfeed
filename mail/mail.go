@@ -1,4 +1,4 @@
-package main
+package mail
 
 import (
 	"bufio"
@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alex-emery/mailfeed/newsletter"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/emersion/go-message"
@@ -20,23 +21,11 @@ import (
 	"go.uber.org/zap"
 )
 
-type NewsLetter struct {
-	Subject string
-	Body    string
-}
-
-func NewNewsLetter(subject, body string) *NewsLetter {
-	return &NewsLetter{
-		Subject: subject,
-		Body:    body,
-	}
-}
-
 type Mail struct {
 	c          *imapclient.Client
 	SeqNum     uint32
 	logger     *zap.Logger
-	letterChan chan<- *NewsLetter
+	letterChan chan<- *newsletter.NewsLetter
 	fetchReady chan struct{}
 	cleanups   []func() error
 	emailID    string
@@ -46,7 +35,7 @@ func (m *Mail) startIdle(logger *zap.Logger, server, username, password string, 
 	options := imapclient.Options{
 		UnilateralDataHandler: &imapclient.UnilateralDataHandler{
 			Expunge: func(seqNum uint32) {
-				logger.Info("message %v has been expunged", zap.Uint32("seqNum", seqNum))
+				logger.Info("message has been expunged", zap.Uint32("seqNum", seqNum))
 			},
 			Mailbox: func(data *imapclient.UnilateralDataMailbox) {
 				if data.NumMessages != nil {
@@ -91,7 +80,7 @@ func newMailClient(server, username, password string, options *imapclient.Option
 	return c, nil
 }
 
-func NewMail(logger *zap.Logger, server, username, password, emailID string, feed chan<- *NewsLetter) (*Mail, error) {
+func New(logger *zap.Logger, server, username, password, emailID string, feed chan<- *newsletter.NewsLetter) (*Mail, error) {
 	c, err := newMailClient(server, username, password, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create mail client: %v", err)
@@ -149,7 +138,6 @@ func (m *Mail) Fetch() {
 		Flags:    true,
 		Envelope: true,
 		BodySection: []*imap.FetchItemBodySection{
-			// {Specifier: imap.PartSpecifierMIME},
 			{Specifier: imap.PartSpecifierHeader},
 			{Specifier: imap.PartSpecifierText},
 		},
@@ -213,7 +201,8 @@ func (m *Mail) Fetch() {
 			continue
 		}
 
-		m.letterChan <- NewNewsLetter(msg.Envelope.Subject, contents)
+		m.logger.Info("message converted", zap.Uint32("UID", msg.UID))
+		m.letterChan <- newsletter.New(msg.Envelope.Subject, contents)
 
 		m.SeqNum = msg.UID + 1
 	}
