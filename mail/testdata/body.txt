@@ -1,0 +1,12 @@
+--superboundary
+Content-Type: text/plain; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+Wow this is like the normal text/plain version. 
+--superboundary
+Content-Type: text/html; charset="utf-8"
+Content-Transfer-Encoding: quoted-printable
+
+<html><head><meta charset=3D"utf-8"><title>The News Letter</title>
+</head><body>Wow this is like the text/html version.</body></html>
+--superboundary--

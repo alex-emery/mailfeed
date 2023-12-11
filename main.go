@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os/signal"
 
 	"os"
@@ -11,6 +12,8 @@ import (
 	"github.com/alex-emery/mailfeed/mail"
 	"github.com/alex-emery/mailfeed/newsletter"
 	"github.com/alex-emery/mailfeed/rss"
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 	"github.com/joho/godotenv"
 	"go.uber.org/zap"
 )
@@ -41,9 +44,21 @@ func main() {
 
 	go m.StartFetch()
 
-	server := rss.New(logger, feedChan)
+	handler := rss.New(logger, feedChan)
+
+	port := 8080
+
+	r := chi.NewRouter()
+	r.Use(middleware.Logger)
+	r.Get("/rss", handler.GetFeed)
+
+	server := &http.Server{
+		Addr:    fmt.Sprintf(":%d", port),
+		Handler: r,
+	}
 
 	go func() {
+		logger.Info(fmt.Sprintf("RSS serving on :%d\n", port))
 		err := server.ListenAndServe()
 		if err != nil {
 			fmt.Println("Error:", err)

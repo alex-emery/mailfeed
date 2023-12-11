@@ -1,8 +1,6 @@
 package rss
 
 import (
-	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -35,50 +33,35 @@ func (s *Server) AddToFeed(letter *newsletter.NewsLetter) {
 
 type Server struct {
 	feed     *feeds.Feed
-	server   *http.Server
 	logger   *zap.Logger
 	feedChan <-chan *newsletter.NewsLetter
+}
+
+func (s *Server) GetFeed(w http.ResponseWriter, r *http.Request) {
+	content, err := s.feed.ToRss()
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+	}
+	w.Header().Set("Content-Type", "application/rss+xml")
+	if err != nil {
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+	w.Write([]byte(content))
 }
 
 func New(logger *zap.Logger, feedChan <-chan *newsletter.NewsLetter) *Server {
 	feed := NewFeed("Good Title")
 
-	http.HandleFunc("/rss", func(w http.ResponseWriter, r *http.Request) {
-		content, err := feed.ToRss()
-		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		}
-		w.Header().Set("Content-Type", "application/rss+xml")
-		if err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		w.Write([]byte(content))
-	})
-
-	port := 8080
-	logger.Info(fmt.Sprintf("RSS serving on :%d\n", port))
-	server := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: nil,
-	}
-
-	return &Server{
+	// load feed in from DB.
+	s := &Server{
 		feed:     feed,
-		server:   server,
 		logger:   logger,
 		feedChan: feedChan,
 	}
-}
-
-func (s *Server) ListenAndServe() error {
 	go func() {
 		s.AddToFeed(<-s.feedChan)
 	}()
 
-	return s.server.ListenAndServe()
-}
-
-func (s *Server) Shutdown(ctx context.Context) error {
-	return s.server.Shutdown(ctx)
+	return s
 }

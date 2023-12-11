@@ -1,0 +1,7 @@
+Delivered-To: test@email.com.
+Mime-Version: 1.0
+Content-Type: multipart/alternative;
+ boundary="superboundary"
+Subject: Why is Email to RSS Great 
+From: The Newsletter <the@newsletter.com>
+To: test@email.com
