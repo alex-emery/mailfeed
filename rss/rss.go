@@ -47,7 +47,11 @@ func (s *Server) GetFeed(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
-	w.Write([]byte(content))
+
+	_, err = w.Write([]byte(content))
+	if err != nil {
+		s.logger.Error("Error writing response", zap.Error(err))
+	}
 }
 
 func New(logger *zap.Logger, feedChan <-chan *newsletter.NewsLetter) *Server {
