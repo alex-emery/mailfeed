@@ -3,6 +3,7 @@ package mail
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/alex-emery/mailfeed/database"
+	"github.com/alex-emery/mailfeed/database/sqlc"
 	"github.com/alex-emery/mailfeed/newsletter"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -28,7 +31,7 @@ type Mail struct {
 	letterChan chan<- *newsletter.NewsLetter
 	fetchReady chan struct{}
 	cleanups   []func() error
-	emailID    string
+	db         *database.Database
 }
 
 func (m *Mail) startIdle(logger *zap.Logger, server, username, password string, fetchReady chan<- struct{}) error {
@@ -80,7 +83,7 @@ func newMailClient(server, username, password string, options *imapclient.Option
 	return c, nil
 }
 
-func New(logger *zap.Logger, server, username, password, emailID string, feed chan<- *newsletter.NewsLetter) (*Mail, error) {
+func New(logger *zap.Logger, server, username, password string, db *database.Database, feed chan<- *newsletter.NewsLetter) (*Mail, error) {
 	c, err := newMailClient(server, username, password, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create mail client: %v", err)
@@ -102,7 +105,7 @@ func New(logger *zap.Logger, server, username, password, emailID string, feed ch
 		letterChan: feed,
 		fetchReady: fetchReady,
 		cleanups:   []func() error{c.Close},
-		emailID:    emailID,
+		db:         db,
 	}
 
 	err = mail.startIdle(logger, server, username, password, fetchReady)
@@ -118,7 +121,6 @@ func (m *Mail) Close() {
 		if err := cleanup(); err != nil {
 			m.logger.Error("failed to cleanup", zap.Error(err))
 		}
-
 	}
 }
 
@@ -179,6 +181,7 @@ func (m *Mail) Fetch() {
 					Header: txtHeader,
 				}
 			}
+
 			if k.Specifier == imap.PartSpecifierText {
 				body = string(buf)
 			}
@@ -190,11 +193,6 @@ func (m *Mail) Fetch() {
 			continue
 		}
 
-		if parsedMessage.Header.Get("To") != m.emailID {
-			fmt.Println("not for me, skipping")
-			continue
-		}
-
 		contents, err := ConvertEmail(*parsedMessage)
 		if err != nil {
 			m.logger.Error("failed to convert email", zap.Error(err))
@@ -202,7 +200,38 @@ func (m *Mail) Fetch() {
 		}
 
 		m.logger.Info("message converted", zap.Uint32("UID", msg.UID))
-		m.letterChan <- newsletter.New(msg.Envelope.Subject, contents)
+
+		// Parse the date string
+		parsedTime, err := time.Parse("Mon, 02 Jan 2006 15:04:05 -0700", parsedMessage.Header.Get("Date"))
+		if err != nil {
+			m.logger.Error("failed to parse date", zap.Error(err))
+			continue
+		}
+
+		// Format the time to a string that SQLite understands
+		formattedTime := parsedTime.Format("2006-01-02 15:04:05")
+
+		_, err = m.db.CreateEmail(context.Background(), sqlc.CreateEmailParams{
+			ID:          int64(msg.UID),
+			Date:        formattedTime,
+			Recipient:   parsedMessage.Header.Get("To"),
+			Sender:      parsedMessage.Header.Get("From"),
+			Subject:     parsedMessage.Header.Get("Subject"),
+			Description: contents,
+		})
+
+		if err != nil {
+			m.logger.Error("failed to insert email", zap.Error(err), zap.String("subject", parsedMessage.Header.Get("Subject")))
+			continue
+		}
+
+		destinationInbox := strings.TrimSpace(strings.Split(parsedMessage.Header.Get("To"), "@")[0])
+		inbox, err := m.db.GetFeed(context.Background(), destinationInbox)
+		if err != nil {
+			m.logger.Error("failed to find destination inbox", zap.Error(err))
+		}
+
+		m.letterChan <- newsletter.New(inbox.ID, msg.Envelope.Subject, contents, parsedTime)
 
 		m.SeqNum = msg.UID + 1
 	}
