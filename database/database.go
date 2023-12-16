@@ -30,8 +30,8 @@ func New(logger *zap.Logger, filepath string) (Database, error) {
 	}
 
 	queries := sqlc.New(db)
-	return Database{Queries: queries}, nil
 
+	return Database{Queries: queries}, nil
 }
 
 func Migrate(logger *zap.Logger, db *sql.DB) error {

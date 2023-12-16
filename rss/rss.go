@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"net/http"
 	"time"
 
 	"github.com/alex-emery/mailfeed/database"
 	"github.com/alex-emery/mailfeed/database/sqlc"
+	"github.com/alex-emery/mailfeed/internal/website"
 	"github.com/alex-emery/mailfeed/newsletter"
 	"github.com/go-chi/chi"
 	"github.com/gorilla/feeds"
@@ -64,6 +66,7 @@ type Server struct {
 	logger   *zap.Logger
 	feedChan <-chan *newsletter.NewsLetter
 	db       *database.Database
+	domain   string
 }
 
 type CreateFeedRequest struct {
@@ -77,26 +80,59 @@ func (s *Server) CreateFeed(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	req := CreateFeedRequest{}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(500)
-	}
+	if r.Header.Get("Content-Type") == "application/x-www-form-urlencoded" {
+		err := r.ParseForm()
+		if err != nil {
+			s.logger.Error("Error parsing form", zap.Error(err))
+			w.WriteHeader(500)
+			return
+		}
 
-	if req.Name == "" {
-		w.WriteHeader(400)
-		return
+		for key, value := range r.Form {
+			if key == "name" {
+				req.Name = value[0]
+				break
+			}
+		}
+	} else {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			w.WriteHeader(500)
+		}
+
+		if req.Name == "" {
+			w.WriteHeader(400)
+			return
+		}
 	}
 
 	feed, err := s.db.CreateFeed(r.Context(), sqlc.CreateFeedParams{
-		ID:   GenerateRandomString(4),
+		ID:   GenerateRandomString(6),
 		Name: req.Name,
 	})
 	if err != nil {
 		w.WriteHeader(500)
 	}
 
-	resp := fmt.Sprintf("{\"email\": \"%s\"}", feed.ID)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	tmpl, err := template.ParseFS(website.Templates, "templates/message.html")
+	if err != nil {
+		s.logger.Error("Error parsing template", zap.Error(err))
+		w.WriteHeader(500)
+		return
+	}
 
-	w.Write([]byte(resp))
+	templateOptions := struct {
+		ID     string
+		Domain string
+	}{
+		ID:     feed.ID,
+		Domain: s.domain,
+	}
+
+	err = tmpl.Execute(w, templateOptions)
+	if err != nil {
+		s.logger.Error("Error executing template", zap.Error(err))
+	}
 }
 
 // Gets a feed for a given id, which is the username part of the email address.
@@ -123,12 +159,13 @@ func (s *Server) GetFeed(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func New(logger *zap.Logger, db *database.Database, feedChan <-chan *newsletter.NewsLetter) (*Server, error) {
+func New(logger *zap.Logger, db *database.Database, feedChan <-chan *newsletter.NewsLetter, domain string) (*Server, error) {
 	s := &Server{
 		feeds:    make(map[string]*feeds.Feed),
 		logger:   logger,
 		feedChan: feedChan,
 		db:       db,
+		domain:   domain,
 	}
 
 	rssFeeds, err := db.ListFeeds(context.Background())
@@ -157,7 +194,6 @@ func New(logger *zap.Logger, db *database.Database, feedChan <-chan *newsletter.
 				Created:     date,
 			})
 		}
-
 	}
 
 	go func() {

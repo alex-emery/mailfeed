@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Mailfeed</title>
+    <style>
+      body {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+        padding: 0;
+      }
+
+      .container {
+        text-align: center;
+      }
+
+      .submit-button {
+        margin-top: 10px;
+      }
+    </style>
+    <script
+      src="https://unpkg.com/htmx.org@1.9.9"
+      integrity="sha384-QFjmbokDn2DjBjq+fM+8LUIVrAgqcNW2s0PjAxHETgRn9l4fvX31ZxDxvwQnyMOX"
+      crossorigin="anonymous"
+    ></script>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Welcome to Mailfeed</h1>
+      <form hx-post="/rss">
+        <input id="title" name="name" type="text" placeholder="Feed Name" hx-swap="outerHTML"/>
+        <br />
+        <button class="submit-button" type="submit">Submit</button>
+      </form>
+    </div>
+  </body>
+</html>

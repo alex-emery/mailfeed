@@ -9,3 +9,7 @@ $(SQL_GENERATED): $(SQL_SOURCE)
 .PHONY: test
 test:
 	go test -v -cover ./...
+
+.PHONY: build
+build:
+	go build -o bin/mailfeed .

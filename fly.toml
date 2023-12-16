@@ -1,0 +1,27 @@
+# fly.toml app configuration file generated for mailfeed on 2023-12-16T14:26:33Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = "mailfeed"
+primary_region = "lhr"
+
+[build]
+
+[[mounts]]
+  source = "mailfeed_data"
+  destination = "/data"
+  auto_extend_size_threshold = 0
+
+[http_service]
+  internal_port = 8080
+  force_https = true 
+  auto_stop_machines = false
+  auto_start_machines = false
+  min_machines_running = 1
+  processes = ["app"]
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 1024

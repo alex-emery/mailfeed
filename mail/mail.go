@@ -16,6 +16,7 @@ import (
 
 	"github.com/alex-emery/mailfeed/database"
 	"github.com/alex-emery/mailfeed/database/sqlc"
+	"github.com/alex-emery/mailfeed/date"
 	"github.com/alex-emery/mailfeed/newsletter"
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -134,6 +135,7 @@ func (m *Mail) StartFetch() {
 
 // Fetches a single email from the server.
 func (m *Mail) Fetch() {
+	m.logger.Info("fetching messages", zap.Uint32("UID", m.SeqNum))
 	seqSet := imap.SeqSetNum(m.SeqNum)
 	fetchOptions := &imap.FetchOptions{
 		UID:      true,
@@ -157,7 +159,8 @@ func (m *Mail) Fetch() {
 
 	var messages []*imapclient.FetchMessageBuffer
 	retry := 0
-	for messages = getMessages(); messages == nil && retry < 3; messages = getMessages() {
+	for messages = getMessages(); messages == nil && retry < 10; messages = getMessages() {
+		m.logger.Debug("retrying fetch", zap.Int("retry", retry))
 		time.Sleep(1 * time.Second)
 		retry += 1
 	}
@@ -202,7 +205,7 @@ func (m *Mail) Fetch() {
 		m.logger.Info("message converted", zap.Uint32("UID", msg.UID))
 
 		// Parse the date string
-		parsedTime, err := time.Parse("Mon, 02 Jan 2006 15:04:05 -0700", parsedMessage.Header.Get("Date"))
+		parsedTime, err := date.ParseDate(parsedMessage.Header.Get("Date"))
 		if err != nil {
 			m.logger.Error("failed to parse date", zap.Error(err))
 			continue

@@ -13,11 +13,11 @@ import (
 )
 
 func main() {
+	dbPath := flag.String("db", "mailfeed.db", "path to sqlite database")
 	port := flag.String("port", "8080", "port to run server on")
-	err := godotenv.Load()
-	if err != nil {
-		log.Fatal("Error loading .env file")
-	}
+	host := flag.String("host", "localhost", "host to run server on")
+	flag.Parse()
+	_ = godotenv.Load()
 
 	emailUsername := os.Getenv("EMAIL_USERNAME")
 	emailPassword := os.Getenv("EMAIL_PASSWORD")
@@ -30,7 +30,16 @@ func main() {
 
 	defer logger.Sync()
 
-	svc, err := service.New(logger, emailServer, emailUsername, emailPassword, *port)
+	options := service.ServiceOptions{
+		EmailServer:   emailServer,
+		EmailUsername: emailUsername,
+		EmailPassword: emailPassword,
+		DBPath:        *dbPath,
+		Port:          *port,
+		Domain:        *host,
+	}
+
+	svc, err := service.New(logger, options)
 	if err != nil {
 		logger.Fatal("failed to create service", zap.Error(err))
 	}

@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/alex-emery/mailfeed/database"
+	"github.com/alex-emery/mailfeed/internal/website"
 	"github.com/alex-emery/mailfeed/mail"
 	"github.com/alex-emery/mailfeed/newsletter"
 	"github.com/alex-emery/mailfeed/rss"
 	"github.com/go-chi/chi"
+	"github.com/go-chi/httprate"
 	"go.uber.org/zap"
 	"moul.io/chizap"
 )
@@ -20,21 +23,30 @@ type Service struct {
 	logger     *zap.Logger
 }
 
-func New(logger *zap.Logger, emailServer, emailUsername, emailPassword, port string) (Service, error) {
+type ServiceOptions struct {
+	EmailServer   string
+	EmailUsername string
+	EmailPassword string
+	DBPath        string
+	Port          string
+	Domain        string
+}
+
+func New(logger *zap.Logger, options ServiceOptions) (Service, error) {
 	feedChan := make(chan *newsletter.NewsLetter)
-	db, err := database.New(logger, "mailfeed.db")
+	db, err := database.New(logger, options.DBPath)
 	if err != nil {
 		return Service{}, fmt.Errorf("failed to create database: %w", err)
 	}
 
-	m, err := mail.New(logger, emailServer, emailUsername, emailPassword, &db, feedChan)
+	m, err := mail.New(logger, options.EmailServer, options.EmailUsername, options.EmailPassword, &db, feedChan)
 	if err != nil {
 		return Service{}, fmt.Errorf("failed to create mail fetcher: %w", err)
 	}
 
 	go m.StartFetch()
 
-	rss, err := rss.New(logger, &db, feedChan)
+	rss, err := rss.New(logger, &db, feedChan, options.Domain)
 	if err != nil {
 		return Service{}, fmt.Errorf("failed to create rss server: %w", err)
 	}
@@ -45,13 +57,18 @@ func New(logger *zap.Logger, emailServer, emailUsername, emailPassword, port str
 		WithUserAgent: true,
 	}))
 
-	r.Post("/rss", rss.CreateFeed)
-	r.Get("/rss/{id}", rss.GetFeed)
+	r.Get("/", website.Serve)
+
+	r.Route("/rss", func(r chi.Router) {
+		r.Use(httprate.LimitByIP(2, 1*time.Minute))
+		r.Post("/", rss.CreateFeed)
+		r.Get("/{id}", rss.GetFeed)
+	})
 
 	return Service{
 		mail: m,
 		httpServer: &http.Server{
-			Addr:    fmt.Sprintf(":%s", port),
+			Addr:    fmt.Sprintf(":%s", options.Port),
 			Handler: r,
 		},
 		logger: logger,
