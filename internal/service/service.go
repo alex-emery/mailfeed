@@ -60,7 +60,7 @@ func New(logger *zap.Logger, options ServiceOptions) (Service, error) {
 	r.Get("/", website.Serve)
 
 	r.Route("/rss", func(r chi.Router) {
-		r.Use(httprate.LimitByIP(2, 1*time.Minute))
+		r.Use(httprate.LimitByIP(30, 1*time.Minute))
 		r.Post("/", rss.CreateFeed)
 		r.Get("/{id}", rss.GetFeed)
 	})
