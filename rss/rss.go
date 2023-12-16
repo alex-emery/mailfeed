@@ -23,7 +23,7 @@ func NewFeed(title string) *feeds.Feed {
 	now := time.Now()
 	feed := &feeds.Feed{
 		Title:   title,
-		Author:  &feeds.Author{Name: "Mail Feed", Email: "feed@mailfeed.io"},
+		Author:  &feeds.Author{Name: "Mail Feed", Email: "feed@mailfeed.xyz"},
 		Created: now,
 	}
 
@@ -133,6 +133,8 @@ func (s *Server) CreateFeed(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.logger.Error("Error executing template", zap.Error(err))
 	}
+
+	s.feeds[feed.ID] = NewFeed(feed.Name)
 }
 
 // Gets a feed for a given id, which is the username part of the email address.
@@ -143,10 +145,12 @@ func (s *Server) GetFeed(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Not Found", http.StatusNotFound)
 		return
 	}
+
 	content, err := s.feeds[inboxID].ToRss()
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 	}
+
 	w.Header().Set("Content-Type", "application/rss+xml")
 	if err != nil {
 		http.Error(w, "Internal Server Error", http.StatusInternalServerError)

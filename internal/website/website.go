@@ -13,5 +13,8 @@ func Serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Write([]byte(indexHTML))
+	if _, err = w.Write([]byte(indexHTML)); err != nil {
+		w.WriteHeader(500)
+		return
+	}
 }

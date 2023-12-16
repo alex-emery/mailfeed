@@ -28,7 +28,11 @@ func main() {
 		log.Fatal("failed to create logger", err)
 	}
 
-	defer logger.Sync()
+	defer func() {
+		if err := logger.Sync(); err != nil {
+			log.Fatal("failed to sync logger", err)
+		}
+	}()
 
 	options := service.ServiceOptions{
 		EmailServer:   emailServer,
