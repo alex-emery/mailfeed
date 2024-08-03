@@ -44,8 +44,6 @@ func New(logger *zap.Logger, options ServiceOptions) (Service, error) {
 		return Service{}, fmt.Errorf("failed to create mail fetcher: %w", err)
 	}
 
-	go m.StartFetch()
-
 	rss, err := rss.New(logger, &db, feedChan, options.Domain)
 	if err != nil {
 		return Service{}, fmt.Errorf("failed to create rss server: %w", err)
@@ -76,6 +74,8 @@ func New(logger *zap.Logger, options ServiceOptions) (Service, error) {
 }
 
 func (svc *Service) Start() error {
+	go svc.mail.StartFetch()
+
 	if err := svc.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("failed to start http server: %w", err)
 	}
